@@ -11,13 +11,13 @@ variable "DOCKER_ORGANIZATION" {
 }
 
 target "server" {
-  tags = ["${DOCKER_ORGANIZATION}/dapp:echo-voucher-${TAG}-server"]
+  tags = ["${DOCKER_ORGANIZATION}/dapp:odds-and-evens-${TAG}-server"]
 }
 
 target "console" {
-  tags = ["${DOCKER_ORGANIZATION}/dapp:echo-voucher-${TAG}-console"]
+  tags = ["${DOCKER_ORGANIZATION}/dapp:odds-and-evens-${TAG}-console"]
 }
 
 target "machine" {
-  tags = ["${DOCKER_ORGANIZATION}/dapp:echo-voucher-${TAG}-machine"]
+  tags = ["${DOCKER_ORGANIZATION}/dapp:odds-and-evens-${TAG}-machine"]
 }
