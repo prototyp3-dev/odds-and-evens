@@ -15,9 +15,11 @@ import logging
 import requests
 
 from Cryptodome.Hash import SHA512, SHA224
+from eth_abi import encode
 from enum import Enum
 from itertools import zip_longest
 import datetime
+import json
 
 logging.basicConfig(level="INFO")
 logger = logging.getLogger(__name__)
@@ -40,7 +42,7 @@ games = {}
 
 
 def handle_game_logic(sender, timestamp, data):
-    if not data.get("opponent"):
+    if data.get("opponent") is None:
         raise Exception("No opponent defined")
 
     # Get game id based on players' identification
@@ -65,8 +67,8 @@ def handle_game_logic(sender, timestamp, data):
 
     # Game is in commit phase
     elif game["phase"] == Phase.COMMIT.name:
-        if not game[sender]["commit_ts"] and (data.get("commit") or data.get("action") ):
-            if data.get("commit"):
+        if not game[sender]["commit_ts"] and (data.get("commit") is not None or data.get("action") is not None):
+            if data.get("commit") is not None:
                 # add commit for the second player
                 add_commit(sender, timestamp, data, game)
                 game["last_interaction"] = "COMMIT ADDED"
@@ -88,7 +90,7 @@ def handle_game_logic(sender, timestamp, data):
 
     elif game["phase"] == Phase.REVEAL.name:
         # Check if there's no reveal yet and, then receive the reveal message
-        if not game[sender]["reveal_ts"] and data.get("action"):
+        if not game[sender]["reveal_ts"] and data.get("action") is not None:
             # add reveal
             add_reveal(sender, timestamp, data, game)
 
@@ -98,8 +100,10 @@ def handle_game_logic(sender, timestamp, data):
                 # winner and set game phase and notice message
                 game["phase"] = Phase.FINISH.name
                 game["last_interaction"] = "WRONG REVEAL ADDED"
+                winner = data['opponent']
+                game["winner"] = winner
                 message = get_game_status_message(game_id)
-                message = f"WINNER[wrong reveal victory]({get_player_display_id(data['opponent'])}) | {get_game_status_message(game_id)}"
+                message = f"WINNER[wrong reveal victory]({get_player_display_id(winner)}) | {get_game_status_message(game_id)}"
             else:
                 # Reveal was successful
                 if game[data["opponent"]]["reveal_ts"]:
@@ -108,6 +112,7 @@ def handle_game_logic(sender, timestamp, data):
                     winner = get_winner(game)
                     game["phase"] = Phase.FINISH.name
                     game["last_interaction"] = "REVEAL ADDED"
+                    game["winner"] = winner
                     message = f"WINNER[normal victory]({get_player_display_id(winner)}) | {get_game_status_message(game_id)}"
                 else:
                     # Opponent still has to send his reveal, then set game
@@ -122,14 +127,18 @@ def handle_game_logic(sender, timestamp, data):
             # Set game phase and notice message
             game["phase"] = Phase.FINISH.name
             game["last_interaction"] = "TIMEOUT"
+            game["winner"] = sender
             message = f"WINNER[W.O. victory]({get_player_display_id(sender)}) | {get_game_status_message(game_id)}"
 
     else:
         raise Exception("Invalid game phase")
 
-    if game["phase"] == Phase.FINISH.name or game["phase"] == Phase.ABORT.name:
+    if game["phase"] == Phase.FINISH.name:
+        # send end game notice
+        send_end_game_notice(game)
         del games[game_id]
-
+    if game["phase"] == Phase.ABORT.name:
+        del games[game_id]
     if message is None:
         raise Exception(
             f"Invalid action of player {get_player_display_id(sender)} for game {game_id} in {game['phase']} phase")
@@ -141,11 +150,11 @@ def handle_game_logic(sender, timestamp, data):
 # Create a message to display the status a given game
 def get_game_status_message(game_id):
     message = f"Game({game_id})"
-    if not games.get(game_id):
+    if games.get(game_id) is None:
         return message
     game = games[game_id]
 
-    message = f"{message} Phase({game['phase']}) Last({game['last_interaction']} - {get_pretty_timestamp(game['last_ts'])})"
+    message = f"{message} | Phase({game['phase']}) | Last({game['last_interaction']} - {get_pretty_timestamp(game['last_ts'])})"
     for player in game["players"]:
         message = f"{message} | {get_player_status(game,player)}"
 
@@ -156,13 +165,13 @@ def get_player_status(game,p):
     player_data = f"Player({get_player_display_id(p)}) Parity({get_player_parity(game[p])})"
     player_status_messages = []
     player_ts = f""
-    if game[p].get('commit'):
+    if game[p].get('commit') is not None:
         player_status_messages.append(f"Commit({game[p].get('commit')})")
         player_ts = f" Ts({get_pretty_timestamp(game[p]['commit_ts'])})"
-    if game[p].get('action'):
+    if game[p].get('action') is not None:
         player_status_messages.append(f"Action({game[p].get('action')})")
         player_ts = f" Ts({get_pretty_timestamp(game[p]['reveal_ts'])})"
-    if game[p].get('nonce'):
+    if game[p].get('nonce') is not None:
         player_status_messages.append(f"Nonce({game[p].get('nonce')})")
     player_status = ', '.join(player_status_messages) if len(player_status_messages) > 0 else "No Commit"
     return f"{player_data}{player_ts}: {player_status}"
@@ -183,7 +192,7 @@ def get_pretty_timestamp(ts):
 def get_game(sender, timestamp, data, game_id):
     game = None
     # Create and start game if it doesn't exist
-    if not games.get(game_id):
+    if games.get(game_id) is None:
         # create game
         game = new_game(sender, timestamp, data)
 
@@ -205,18 +214,19 @@ def get_current_games_states():
 
 # Create a new game structure
 def new_game(sender, timestamp, data):
-    if not data.get("opponent"):
+    if data.get("opponent") is None:
         raise Exception("Cannot create game: no opponent defined")
     if data["opponent"].lower() == sender.lower():
         raise Exception(
             "Cannot create game: a player cannot play against themselves")
-    if not data.get("commit"):
+    if data.get("commit") is None:
         raise Exception("Cannot create game: no commit defined")
-    if not data.get("parity"):
+    if data.get("parity") is None:
         raise Exception("Cannot create game: no parity defined")
     return {
         "phase": None,
         "players": [sender, data["opponent"]],
+        "winner": None,
         "last_ts": timestamp,
         "last_interaction": None,
         sender: {
@@ -237,10 +247,20 @@ def new_game(sender, timestamp, data):
         }
     }
 
+def send_end_game_notice(game):
+    # send notice 
+    if game["phase"] != Phase.FINISH.name: return
+    # player_a, player_b, winner
+    players =  game['players']
+    data = encode(['address', 'address', 'address'], 
+        [players[0].lower(), players[1].lower(), game['winner'].lower()])
+    payload = to_hex(data)
+    notice = {"payload": payload}
+    send_notice(notice)
 
 # Add a commit to the game
 def add_commit(sender, timestamp, data, game):
-    if not data.get("commit"):
+    if data.get("commit") is None:
         raise Exception("Cannot add commit: no commit defined")
     game[sender]["commit"] = data["commit"]
     game[sender]["commit_ts"] = timestamp
@@ -250,10 +270,10 @@ def add_commit(sender, timestamp, data, game):
 # Check and add a reveal to the game. If the reveal validates the commit,
 # return true, otherwise return false
 def add_reveal(sender, timestamp, data, game):
-    if not data.get("action"):
+    if data.get("action") is None:
         raise Exception("Cannot add reveal: no action defined")
     game[sender]["action"] = data["action"]
-    if data.get("nonce"):
+    if data.get("nonce") is not None:
         game[sender]["nonce"] = data["nonce"]
     game[sender]["reveal_ts"] = timestamp
     game["last_ts"] = timestamp
@@ -270,7 +290,7 @@ def check_reveal(sender, game):
 
 # Check if sender can cancel game
 def check_cancel_game(sender, data, game):
-    if not data.get("cancel"):
+    if data.get("cancel") is None:
         return False
     if game['phase'] != Phase.COMMIT.name:
         raise Exception(f"Cannot cancel game in {game['phase']} phase")
@@ -282,7 +302,7 @@ def check_cancel_game(sender, data, game):
 
 # Check if sender can claim timeout
 def check_timeout_game(sender, timestamp, data, game):
-    if not data.get("timeout"):
+    if data.get("timeout") is None:
         return False
     if game["phase"] != Phase.REVEAL.name:
         raise Exception(f"Cannot claim timeout game in {game['phase']} phase")
@@ -411,8 +431,8 @@ def handle_advance(data):
             payload_dict)
         logger.info(f"Message response {msg}")
 
-        # send notice
-        send_notice({"payload": str2hex(msg)})
+        # send report
+        send_report({"payload": str2hex(msg)})
     except Exception as e:
         status = "reject"
         logger.error(e)
