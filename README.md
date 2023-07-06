@@ -185,7 +185,7 @@ So the obtained messages are:
 
 ## Extra: Using Notices in Base Layer
 
-Unlike reports, notices are messages that once the epoch finishes, Cartesi Rollups framework create a proof so the information may be used in other contracts. The Odds and Evens DApp generates a notice once a game finishes to inform the winner. The Notice has the following
+Unlike reports, notices are messages that once the epoch finishes, Cartesi Rollups framework create a proof so the information may be used in other contracts. The Odds and Evens DApp generates a notice once a game finishes to inform the winner.
 
 To generate the notice proof, you can advance time in the local network and force the end of the epoch with the following command:
 
