@@ -184,7 +184,7 @@ So the obtained messages are:
 
 ## Extra: Using Notices in Base Layer
 
-Unlike reports, notices are messages that once the epoch finishes, Cartesi Rollups framework create a proof so the information may be used in other contracts. The Odds and Evens DApp generates a notice once a game finishes to inform the winner. The Notice has the following
+Unlike reports, notices are messages that once the epoch finishes, Cartesi Rollups framework create a proof so the information may be used in other contracts. The Odds and Evens DApp generates a notice once a game finishes to inform the winner.
 
 To generate the notice proof, you can advance time in the local network and force the end of the epoch with the following command:
 
@@ -198,7 +198,7 @@ Then, to get the notice with the proof, you can run:
 curl -s -H 'Content-Type: application/json' -X POST http://localhost:4000/graphql -d '{"query": "query { notices { nodes { index input { index epoch { index } } payload proof {machineStateHash outputHashesRootHash noticesEpochRootHash vouchersEpochRootHash keccakInHashesSiblings outputHashesInEpochSiblings} }}}"}' | jq -r -c '.data.notices.nodes[] | .payload,.input.epoch.index,.input.index,.index,.proof.outputHashesRootHash,.proof.vouchersEpochRootHash,.proof.noticesEpochRootHash,.proof.machineStateHash,.proof.keccakInHashesSiblings,.proof.outputHashesInEpochSiblings' | xargs printf "%s (%s,%s,%s,%s,%s,%s,%s,%s,%s)\n"
 ```
 
-Save a single the result to ```NOTICE_RESULT```, so you reference it later.
+Save a single result to ```NOTICE_RESULT```, so you can reference it later.
 
 As an example that uses the notice data, you can create a simple solidity contract that receives the notice payload and proof and adds to the players' score.
 
