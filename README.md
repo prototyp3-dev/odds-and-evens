@@ -1,7 +1,7 @@
 # Odds and evens Game DApp
 
 ```
-Cartesi Rollups version: 0.8.x
+Cartesi Rollups version: 0.9.x
 ```
 
 This example shows how to use the Commit-Reveal logic to implement an [Odds and evens game](https://en.wikipedia.org/wiki/Odds_and_evens_(hand_game)).
